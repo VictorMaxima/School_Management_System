@@ -11,4 +11,5 @@ admin.site.register(models.Course)
 admin.site.register(models.SchoolData, models.SchoolDataAdmin)
 admin.site.register(models.SchoolImage)
 admin.site.register(models.Level)
+admin.site.register(models.ResultFile)
 

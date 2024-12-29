@@ -5,6 +5,8 @@ from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, User
 from django.urls import reverse
 from django.utils.text import slugify
+import pandas as pd
+from io import BytesIO
 
 def grade(a):
     if a < 40:
@@ -121,14 +123,14 @@ class StudentResult(models.Model):
         name = self.student.firstname +' '+ self.session.title + ' ' + self.term + "result"
         return name
     
-    def save(self):
+    def save(self,  *args, **kwargs):
         if self.pk:
             a, b = 0,0
             for result in self.result.all():
                 a += result.TotalScore
                 b += 1
             self.average = a/b
-        super().save()
+        super().save( *args, **kwargs)
             
         
 
@@ -147,9 +149,55 @@ class Result(models.Model):
         super().save()
 
 class ResultFile(models.Model):
-    subject = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="result_file")
+    TERMS = [
+        ('FIRST TERM', 'FIRST TERM'),
+        ('SECOND TERM', 'SECOND TERM'),
+        ('THIRD TERM', 'THIRD TERM')
+   ]
+    subject = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="result_file", blank=True)
     Class = models.ForeignKey(Class, on_delete=models.CASCADE, related_name="result_file")
     file = models.FileField(upload_to="result_sheets", blank=True)
+    teacherInCharge = models.ForeignKey(User, on_delete=models.CASCADE)
+    session = models.ForeignKey(Session, on_delete=models.CASCADE)
+    section = models.ForeignKey(Level, on_delete=models.CASCADE,  default=1, blank=True)
+    level = models.IntegerField(default=1, blank=True)
+    term = models.CharField(max_length=32, choices=TERMS, default = TERMS[0])
+
+    def save(self,  *args, **kwargs):
+        if self.file:
+            self._process_excel_file(self.file)
+        super().save(*args, **kwargs)
+    
+    def _process_excel_file(self, file):
+        """ read the files and store in the database """
+        file.seek(0)
+        excel_data = BytesIO(file.read())
+        df = pd.read_csv(excel_data)
+        rows_list = df.values.tolist()
+        for row in rows_list:
+            try:
+                assessment = int(row[2])
+                exam = int(row[3])
+            except:
+                continue
+            assessment = int(row[2])
+            exam = int(row[3])
+            student = Student.objects.filter(RegistrationNumber=row[1]).first()
+
+            if student:
+                stud_result, created = StudentResult.objects.get_or_create(
+                session=self.session, 
+                student=student, 
+                section=self.section, 
+                level=self.level, 
+                term=self.term
+                )
+            else:
+            # Handle the case where the student is not found
+                stud_result, created = None, False
+            result = Result(AssessmentScore = assessment, ExamScore = exam, teacherInCharge = self.teacherInCharge, subject = self.subject, student_result = stud_result)
+            result.save()
+
 
 
 
